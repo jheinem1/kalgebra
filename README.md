@@ -5,9 +5,9 @@ This fork of [KDE KAlgebra](https://invent.kde.org/education/kalgebra) fixes sha
 ## Behavior
 
 - Calculator definitions and constants are available in the 2D and 3D graph inputs, their completion lists, and 2D interval inputs.
-- A graph is published as a callable function under its displayed name (`f0`, `f1`, etc.). Names are unique across the calculator and both graph tabs. Renaming a graph publishes its new name; previous definitions remain available to existing expressions.
+- A graph is published as a callable function under its displayed name (`f0`, `f1`, etc.). Names are unique across the calculator and both graph tabs. Renaming a graph moves the definition to its new name and removes the old name.
 - Changes to calculator functions or constants rebuild dependent plots. Editing a plotted function updates its shared definition.
-- Removing a plot removes the view, retaining its definition in the calculator so other expressions can continue to use it.
+- Removing a graph also removes its calculator definition and any one-argument form. Removing a function from the calculator Variables dialog removes its graph. Edits from either side update the other; changing a calculator function to a type that cannot be plotted in its current tab removes the incompatible graph while keeping the new calculator definition.
 - The calculator log follows the active palette, including theme changes. Input syntax colors meet a 4.5:1 contrast ratio against the theme's base color; validation backgrounds are tinted from that base.
 - Enter, Return, and Tab accept the highlighted completion instead of the first match. Enter with no active completion still submits the expression, and Up/Down still navigate calculator history.
 - The empty calculator uses the active theme background from startup, before any equations are entered.

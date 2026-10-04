@@ -170,6 +170,7 @@ KAlgebra::KAlgebra(QWidget *parent)
     c_varsModel->setEditable(false);
 
     c_variables = new QTreeView(c_dock_vars);
+    c_variables->setObjectName(QStringLiteral("calculatorVariables"));
     c_variables->setModel(c_varsModel);
     c_variables->setRootIsDecorated(false);
     c_variables->header()->setStretchLastSection(true);
@@ -531,6 +532,7 @@ void KAlgebra::edit_var(const QModelIndex &idx)
 
         e->setAnalitza(c_results->analitza());
         e->setName(var);
+        connect(e, &VarEdit::variableRemoved, this, &KAlgebra::updateInformation);
 
         if (e->exec() == QDialog::Accepted) {
             QString str = var + u" := "_s + e->val().toString();

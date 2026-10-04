@@ -52,6 +52,9 @@ public:
     /** Returns the resulting variable expression */
     Analitza::Expression val();
 
+Q_SIGNALS:
+    void variableRemoved();
+
 private:
     bool canRemove(const QString &name) const;
 

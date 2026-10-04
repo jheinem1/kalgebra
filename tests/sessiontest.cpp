@@ -59,11 +59,72 @@ private Q_SLOTS:
         QVERIFY(!plots.setData(plots.index(0, 0), QStringLiteral("f0")));
         QVERIFY(!plots.setData(plots.index(0, 0), QStringLiteral("not a name")));
         QVERIFY(plots.setData(plots.index(0, 0), QStringLiteral("doubleIt")));
-        QCOMPARE(calculate(variables, QStringLiteral("f1(3)")), 6.);
+        QVERIFY(!variables->contains(QStringLiteral("f1")));
         QCOMPARE(calculate(variables, QStringLiteral("doubleIt(3)")), 6.);
         plots.removeRow(0);
-        QCOMPARE(calculate(variables, QStringLiteral("doubleIt(3)")), 6.);
+        QVERIFY(!variables->contains(QStringLiteral("doubleIt")));
         QCOMPARE(calculate(variables, QStringLiteral("f0")), 42.);
+    }
+    void removingCalculatorFunctionsRemovesTheirGraphs()
+    {
+        ConsoleModel calculator;
+        auto variables = calculator.variables();
+        SessionPlotsModel twoD(variables), threeD(variables);
+        add(twoD, QStringLiteral("x=13*y"), Analitza::Dim2D, variables);
+        add(twoD, QStringLiteral("x->x^2"), Analitza::Dim2D, variables);
+        add(threeD, QStringLiteral("(x,y)->x+y"), Analitza::Dim3D, variables);
+        variables->remove(QStringLiteral("f0"));
+        variables->remove(QStringLiteral("f2"));
+        twoD.refresh();
+        threeD.refresh();
+        QCOMPARE(twoD.rowCount(), 1);
+        QCOMPARE(twoD.index(0, 0).data().toString(), QStringLiteral("f1"));
+        QCOMPARE(threeD.rowCount(), 0);
+        QVERIFY(!variables->contains(QStringLiteral("f0")));
+        QVERIFY(!variables->contains(QStringLiteral("f2")));
+        QVERIFY(!variables->functionOverload(QStringLiteral("f0"), 1));
+        QCOMPARE(calculate(variables, QStringLiteral("f1(3)")), 9.);
+        twoD.refresh();
+        QVERIFY(!variables->contains(QStringLiteral("f0")));
+    }
+    void removingGraphsRemovesCalculatorFunctions()
+    {
+        auto variables = QSharedPointer<Analitza::Variables>::create();
+        SessionPlotsModel twoD(variables), threeD(variables);
+        add(twoD, QStringLiteral("x=13*y"), Analitza::Dim2D, variables);
+        add(twoD, QStringLiteral("x->x^2"), Analitza::Dim2D, variables);
+        add(threeD, QStringLiteral("(x,y)->x+y"), Analitza::Dim3D, variables);
+        QSignalSpy changes(&twoD, &SessionPlotsModel::functionsChanged);
+        QVERIFY(twoD.removeRows(0, 2));
+        QVERIFY(!changes.isEmpty());
+        QVERIFY(!variables->contains(QStringLiteral("f0")));
+        QVERIFY(!variables->contains(QStringLiteral("f1")));
+        QVERIFY(!variables->functionOverload(QStringLiteral("f0"), 1));
+        QVERIFY(variables->contains(QStringLiteral("f2")));
+        threeD.clear();
+        QVERIFY(!variables->contains(QStringLiteral("f2")));
+    }
+    void editsSynchronizeInBothGraphTabs()
+    {
+        ConsoleModel calculator;
+        auto variables = calculator.variables();
+        SessionPlotsModel twoD(variables), threeD(variables);
+        add(twoD, QStringLiteral("x->x^2"), Analitza::Dim2D, variables);
+        add(threeD, QStringLiteral("(x,y)->x+y"), Analitza::Dim3D, variables);
+        QVERIFY(calculator.addOperation(QStringLiteral("f0:=x->x^3")));
+        QVERIFY(calculator.addOperation(QStringLiteral("f1:=(x,y)->x*y")));
+        twoD.refresh();
+        threeD.refresh();
+        QCOMPARE(twoD.index(0, 1).data().toString(), QStringLiteral("x->x^3"));
+        QCOMPARE(threeD.index(0, 1).data().toString(), Analitza::Expression(QStringLiteral("(x,y)->x*y")).toString());
+        QVERIFY(twoD.setData(twoD.index(0, 1), QStringLiteral("x->2*x")));
+        QVERIFY(threeD.setData(threeD.index(0, 1), QStringLiteral("(x,y)->2*x+y")));
+        QCOMPARE(calculate(variables, QStringLiteral("f0(3)")), 6.);
+        QCOMPARE(calculate(variables, QStringLiteral("f1(3,4)")), 10.);
+        QVERIFY(calculator.addOperation(QStringLiteral("f0:=(x,y,z,w)->x+y+z+w")));
+        twoD.refresh();
+        QCOMPARE(twoD.rowCount(), 0);
+        QCOMPARE(calculate(variables, QStringLiteral("f0(1,2,3,4)")), 10.);
     }
     void calculatorRedefinitionSurvivesCosmeticChanges()
     {
@@ -98,6 +159,21 @@ private Q_SLOTS:
         QCOMPARE(variables->valueExpression(QStringLiteral("f0")).bvarList().size(), 2);
         QCOMPARE(calculate(variables, QStringLiteral("f0(2,1)")), 0.);
         QCOMPARE(calculate(variables, QStringLiteral("f0(2)")), 1.);
+    }
+    void implicitCalculatorEditsKeepShortCall()
+    {
+        ConsoleModel calculator;
+        auto variables = calculator.variables();
+        SessionPlotsModel plots(variables);
+        add(plots, QStringLiteral("x=13*y"), Analitza::Dim2D, variables);
+        for (int repeat = 0; repeat < 2; ++repeat) {
+            QVERIFY(calculator.addOperation(QStringLiteral("f0:=(x,y)->x-26*y")));
+            plots.refresh();
+            QCOMPARE(plots.rowCount(), 1);
+            QCOMPARE(calculate(variables, QStringLiteral("f0(52)")), 2.);
+            QCOMPARE(calculate(variables, QStringLiteral("f0(52,2)")), 0.);
+            QVERIFY(Analitza::Expression(plots.index(0, 1).data().toString()).isEquation());
+        }
     }
     void implicitSingleArgument_data()
     {
@@ -142,12 +218,14 @@ private Q_SLOTS:
         QVERIFY(plots.setData(plots.index(0, 1), QStringLiteral("x=3*y")));
         QCOMPARE(calculate(variables, QStringLiteral("f0(12)")), 4.);
         QVERIFY(plots.setData(plots.index(0, 0), QStringLiteral("line")));
+        QVERIFY(!variables->contains(QStringLiteral("f0")));
         QCOMPARE(calculate(variables, QStringLiteral("line(12)")), 4.);
         plots.removeRow(0);
-        QCOMPARE(calculate(variables, QStringLiteral("line(12)")), 4.);
+        QVERIFY(!variables->contains(QStringLiteral("line")));
+        QVERIFY(!variables->functionOverload(QStringLiteral("line"), 1));
         add(plots, QStringLiteral("x^2+y^2=1"), Analitza::Dim2D, variables);
-        QVERIFY(!calculator.addOperation(QStringLiteral("f1(0)")));
-        QVERIFY(calculator.addOperation(QStringLiteral("f1(0,1)")));
+        QVERIFY(!calculator.addOperation(QStringLiteral("f0(0)")));
+        QVERIFY(calculator.addOperation(QStringLiteral("f0(0,1)")));
     }
     void cssFollowsPalette()
     {

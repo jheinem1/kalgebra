@@ -134,7 +134,8 @@ void VarEdit::setAnalitza(Analitza::Analyzer *na)
 void VarEdit::removeVariable()
 {
     vars->remove(m_var);
-    close();
+    Q_EMIT variableRemoved();
+    reject();
 }
 
 #include "moc_varedit.cpp"

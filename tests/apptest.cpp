@@ -3,12 +3,15 @@
 #include "functionedit.h"
 #include "kalgebra.h"
 #include "sessionplotsmodel.h"
+#include "varedit.h"
 #include <KLocalizedString>
 #include <QApplication>
 #include <QAction>
 #include <QDir>
 #include <QSignalSpy>
 #include <QTest>
+#include <QTimer>
+#include <QTreeView>
 #include <analitza/value.h>
 #include <analitzagui/expressionedit.h>
 
@@ -55,6 +58,76 @@ private Q_SLOTS:
         input->setText(QStringLiteral("f1(4,2)"));
         QVERIFY(QMetaObject::invokeMethod(&window, "operate"));
         QCOMPARE(console->analitza()->variables()->valueExpression(QStringLiteral("ans")).toReal().value(), 67.);
+    }
+    void variableDialogSynchronizesGraphs_data()
+    {
+        QTest::addColumn<bool>("threeDimensional");
+        QTest::newRow("2D") << false;
+        QTest::newRow("3D") << true;
+    }
+    void variableDialogSynchronizesGraphs()
+    {
+        QFETCH(bool, threeDimensional);
+        KAlgebra window;
+        auto console = window.findChild<ConsoleHtml *>();
+        auto tree = window.findChild<QTreeView *>(QStringLiteral("calculatorVariables"));
+        auto model = window.findChild<SessionPlotsModel *>(threeDimensional ? QStringLiteral("graph3dFunctions") : QStringLiteral("graph2dFunctions"));
+        auto editor = window.findChild<FunctionEdit *>();
+        auto input3d = window.findChild<Analitza::ExpressionEdit *>(QStringLiteral("graph3dInput"));
+        auto input = window.findChild<Analitza::ExpressionEdit *>(QStringLiteral("calculatorInput"));
+        QVERIFY(console && tree && model && editor && input3d && input);
+        if (threeDimensional) {
+            input3d->setText(QStringLiteral("(x,y)->x+y"));
+            QVERIFY(QMetaObject::invokeMethod(&window, "new_func3d"));
+        } else {
+            editor->setFunction(QStringLiteral("x->x^2"));
+            QVERIFY(QMetaObject::invokeMethod(&window, "new_func"));
+        }
+        auto functionIndex = [&] {
+            for (int row = 0; row < tree->model()->rowCount(); ++row) {
+                if (tree->model()->index(row, 0).data().toString() == QLatin1String("f0"))
+                    return tree->model()->index(row, 1);
+            }
+            return QModelIndex();
+        };
+        QVERIFY(functionIndex().isValid());
+        bool edited = false;
+        QTimer::singleShot(0, &window, [&] {
+            auto dialog = window.findChild<VarEdit *>();
+            if (dialog) {
+                dialog->findChild<Analitza::ExpressionEdit *>()->setText(threeDimensional ? QStringLiteral("(x,y)->x*y") : QStringLiteral("x->x^3"));
+                edited = QMetaObject::invokeMethod(dialog, "ok");
+            }
+        });
+        QVERIFY(QMetaObject::invokeMethod(&window, "edit_var", Q_ARG(QModelIndex, functionIndex())));
+        QVERIFY(edited);
+        QCOMPARE(model->index(0, 1).data().toString(), Analitza::Expression(threeDimensional ? QStringLiteral("(x,y)->x*y") : QStringLiteral("x->x^3")).toString());
+        bool removed = false;
+        QTimer::singleShot(0, &window, [&] {
+            if (auto dialog = window.findChild<VarEdit *>())
+                removed = QMetaObject::invokeMethod(dialog, "removeVariable");
+        });
+        QVERIFY(QMetaObject::invokeMethod(&window, "edit_var", Q_ARG(QModelIndex, functionIndex())));
+        QVERIFY(removed);
+        QCOMPARE(model->rowCount(), 0);
+        QVERIFY(!console->analitza()->variables()->contains(QStringLiteral("f0")));
+        QVERIFY(!functionIndex().isValid());
+        auto completer = input->findChild<QCompleter *>();
+        completer->setCompletionPrefix(QStringLiteral("f0"));
+        QCOMPARE(completer->completionCount(), 0);
+        if (threeDimensional) {
+            input3d->setText(QStringLiteral("(x,y)->x+y"));
+            QVERIFY(QMetaObject::invokeMethod(&window, "new_func3d"));
+        } else {
+            editor->setFunction(QStringLiteral("x->x^2"));
+            QVERIFY(QMetaObject::invokeMethod(&window, "new_func"));
+        }
+        QVERIFY(functionIndex().isValid());
+        QVERIFY(model->removeRow(0));
+        QVERIFY(!console->analitza()->variables()->contains(QStringLiteral("f0")));
+        QVERIFY(!functionIndex().isValid());
+        completer->setCompletionPrefix(QStringLiteral("f0"));
+        QCOMPARE(completer->completionCount(), 0);
     }
     void darkConsoleAndThemeSwitch()
     {
