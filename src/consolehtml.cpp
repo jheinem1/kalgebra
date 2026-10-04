@@ -78,6 +78,7 @@ ConsoleHtml::ConsoleHtml(QWidget *parent)
             qWarning() << "error loading page" << m_actualUrl;
         page()->runJavaScript(QStringLiteral("window.scrollTo(0, document.body.scrollHeight);"));
     });
+    updateView();
 }
 
 ConsoleHtml::~ConsoleHtml()
@@ -202,6 +203,7 @@ void ConsoleHtml::updateView()
     }
     code += "</body></html>";
 
+    page()->setBackgroundColor(qApp->palette().color(QPalette::Base));
     page()->setHtml(QString::fromUtf8(code));
 
     Q_EMIT changed();

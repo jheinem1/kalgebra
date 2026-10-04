@@ -75,6 +75,27 @@ private Q_SLOTS:
         window.resize(1100, 720);
         window.show();
         auto console = window.findChild<ConsoleHtml *>();
+        QCOMPARE(console->page()->backgroundColor(), dark.color(QPalette::Base));
+        QSignalSpy startupLoaded(console, &QWebEngineView::loadFinished);
+        QTRY_VERIFY_WITH_TIMEOUT(!startupLoaded.isEmpty(), 15000);
+        QVERIFY(startupLoaded.last().at(0).toBool());
+        bool startupReady = false;
+        QVariant startupStyle;
+        console->page()->runJavaScript(
+            QStringLiteral("[getComputedStyle(document.documentElement).backgroundColor, document.querySelectorAll('p, ul.error').length]"),
+            [&](const QVariant &result) {
+                startupStyle = result;
+                startupReady = true;
+            });
+        QTRY_VERIFY(startupReady);
+        QCOMPARE(startupStyle.toList().at(0).toString(), QStringLiteral("rgb(20, 22, 24)"));
+        QCOMPARE(startupStyle.toList().at(1).toInt(), 0);
+        const QString output = qEnvironmentVariable("KALGEBRA_TEST_SCREENSHOT_DIR");
+        if (!output.isEmpty()) {
+            QDir().mkpath(output);
+            QTest::qWait(300);
+            QVERIFY(window.grab().save(output + QStringLiteral("/kalgebra-empty-dark.png")));
+        }
         console->addOperation(Analitza::Expression(QStringLiteral("square:=x->x**2")), QStringLiteral("square:=x->x**2"));
         QSignalSpy loaded(console, &QWebEngineView::loadFinished);
         console->addOperation(Analitza::Expression(QStringLiteral("square(3)")), QStringLiteral("square(3)"));
@@ -87,7 +108,6 @@ private Q_SLOTS:
         });
         QTRY_VERIFY(ready);
         QCOMPARE(value.toString(), QStringLiteral("rgb(239, 240, 241)"));
-        const QString output = qEnvironmentVariable("KALGEBRA_TEST_SCREENSHOT_DIR");
         if (!output.isEmpty()) {
             QDir().mkpath(output);
             QTest::qWait(300);
@@ -95,6 +115,7 @@ private Q_SLOTS:
         }
         loaded.clear();
         qApp->setPalette(original);
+        QTRY_COMPARE(console->page()->backgroundColor(), original.color(QPalette::Base));
         QTRY_VERIFY_WITH_TIMEOUT(!loaded.isEmpty(), 15000);
         ready = false;
         console->page()->runJavaScript(QStringLiteral("getComputedStyle(document.documentElement).color"), [&](const QVariant &result) {
