@@ -23,6 +23,7 @@
 #include <QLineEdit>
 #include <QPushButton>
 #include <QWidget>
+#include <analitza/analyzer.h>
 
 #include <KColorCombo>
 
@@ -91,10 +92,8 @@ public:
     }
 
     /** Sets the variables class to be used with the graph functions*/
-    void setVariables(const QSharedPointer<Analitza::Variables> &v)
-    {
-        m_vars = v;
-    }
+    void setVariables(const QSharedPointer<Analitza::Variables> &v);
+    void updateContext();
 
     QSharedPointer<Analitza::Variables> variables() const
     {
@@ -127,6 +126,7 @@ private:
     void setState(const QString &text, bool negative);
     void focusInEvent(QFocusEvent *) override;
 
+    Analitza::Analyzer m_analyzer;
     Analitza::ExpressionEdit *m_func;
     Analitza::ExpressionEdit *m_uplimit, *m_downlimit;
     double m_calcUplimit, m_calcDownlimit;

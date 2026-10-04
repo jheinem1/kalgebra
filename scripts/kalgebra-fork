@@ -1,0 +1,6 @@
+#!/usr/bin/env sh
+# SPDX-License-Identifier: GPL-2.0-or-later
+export QTWEBENGINEPROCESS_PATH=/app/bin/QtWebEngineProcess
+export QTWEBENGINE_RESOURCES_PATH=/app/resources
+export QTWEBENGINE_LOCALES_PATH=/app/translations/qtwebengine_locales
+exec /app/bin/kalgebra "$@"

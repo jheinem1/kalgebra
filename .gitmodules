@@ -1,0 +1,3 @@
+[submodule "external/analitza"]
+	path = external/analitza
+	url = https://github.com/jheinem1/analitza.git

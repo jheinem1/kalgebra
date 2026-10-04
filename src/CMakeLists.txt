@@ -1,5 +1,7 @@
 add_executable(kalgebra)
 target_sources(kalgebra PRIVATE
+    sessionplotsmodel.cpp
+    sessionplotsmodel.h
     askname.h
     consolehtml.cpp
     consolehtml.h

@@ -41,8 +41,8 @@ public:
 };
 
 /**
- *    The Console widget is able to receive an operation, solve it and show the value.
- *    It also is able to load scripts and save logs.
+ *    The Console widget is able to receive an operation, solve it and show the
+ * value. It also is able to load scripts and save logs.
  *    @author Aleix Pol Gonzalez
  */
 
@@ -71,6 +71,7 @@ public:
     }
 
     void contextMenuEvent(QContextMenuEvent *ev) override;
+    void changeEvent(QEvent *event) override;
 
 public Q_SLOTS:
     /** Adds the operation defined by the expression @p e. */

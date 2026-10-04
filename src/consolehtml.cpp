@@ -6,6 +6,7 @@
 #include <QApplication>
 #include <QClipboard>
 #include <QContextMenuEvent>
+#include <QEvent>
 #include <QTemporaryFile>
 #include <QUrlQuery>
 
@@ -72,6 +73,11 @@ ConsoleHtml::ConsoleHtml(QWidget *parent)
     connect(m_model.data(), &ConsoleModel::updateView, this, &ConsoleHtml::updateView);
     connect(m_model.data(), &ConsoleModel::operationSuccessful, this, &ConsoleHtml::includeOperation);
     setPage(new ConsolePage(this));
+    connect(this, &QWebEngineView::loadFinished, this, [this](bool ok) {
+        if (!ok && m_actualUrl.scheme() != QLatin1String("kalgebra"))
+            qWarning() << "error loading page" << m_actualUrl;
+        page()->runJavaScript(QStringLiteral("window.scrollTo(0, document.body.scrollHeight);"));
+    });
 }
 
 ConsoleHtml::~ConsoleHtml()
@@ -200,13 +206,14 @@ void ConsoleHtml::updateView()
 
     Q_EMIT changed();
 
-    connect(this, &QWebEngineView::loadFinished, this, [this](bool ok) {
-        if (!ok && (m_actualUrl.scheme() != QLatin1String("kalgebra"))) {
-            qWarning() << "error loading page" << m_actualUrl;
-        }
 
-        page()->runJavaScript(QStringLiteral("window.scrollTo(0, document.body.scrollHeight);"));
-    });
+}
+
+void ConsoleHtml::changeEvent(QEvent *event)
+{
+    QWebEngineView::changeEvent(event);
+    if (event->type() == QEvent::PaletteChange || event->type() == QEvent::ApplicationPaletteChange)
+        updateView();
 }
 
 void ConsoleHtml::copy() const

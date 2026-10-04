@@ -17,6 +17,7 @@
  *************************************************************************************/
 
 #include "consolemodel.h"
+#include "contrastcolors_p.h"
 
 #include <KLocalizedString>
 #include <QFile>
@@ -27,39 +28,6 @@
 #include <QUrlQuery>
 
 using namespace Qt::Literals::StringLiterals;
-
-Q_GLOBAL_STATIC_WITH_ARGS(QByteArray,
-                          s_css,
-                          ("<style type=\"text/css\">\n"
-                           "\thtml { background-color: "
-                           + qGuiApp->palette().color(QPalette::Active, QPalette::Base).name().toLatin1()
-                           + "; }\n"
-                             "\t.error { border-style: solid; border-width: 1px; border-color: #ff3b21; background-color: #ffe9c4; padding:7px;}\n"
-                             "\t.last  { border-style: solid; border-width: 1px; border-color: #2020ff; background-color: #e0e0ff; padding:7px;}\n"
-                             "\t.before { text-align:right; }\n"
-                             "\t.op  { font-weight: bold; }\n"
-                             //     "\t.normal:hover  { border-style: solid; border-width: 1px; border-color: #777; }\n";
-                             "\t.normal:hover  { background-color: #f7f7f7; }\n"
-                             "\t.cont { color: #560000; }\n"
-                             "\t.num { color: #0000C4; }\n"
-                             "\t.sep { font-weight: bold; color: #0000FF; }\n"
-                             "\t.var { color: #640000; }\n"
-                             "\t.keyword { color: #000064; }\n"
-                             "\t.func { color: #008600; }\n"
-                             "\t.result { padding-left: 10%; }\n"
-                             "\t.options { font-size: small; text-align:right }\n"
-                             "\t.string { color: #bb0000 }\n"
-                             "\tli { padding-left: 12px; padding-bottom: 4px; list-style-position: inside; }\n"
-                             "\t.exp { color: #000000 }\n"
-                             "\ta { color: #0000ff }\n"
-                             "\ta:link {text-decoration:none;}\n"
-                             "\ta:visited {text-decoration:none;}\n"
-                             "\ta:hover {text-decoration:underline;}\n"
-                             "\ta:active {text-decoration:underline;}\n"
-                             "\tp { font-size: "
-                           + QByteArray::number(QFontMetrics(QGuiApplication::font()).height())
-                           + "px; }\n"
-                             "</style>\n"))
 
 ConsoleModel::ConsoleModel(QObject *parent)
     : QObject(parent)
@@ -90,8 +58,10 @@ bool ConsoleModel::addOperation(const Analitza::Expression &e, const QString &in
         Q_EMIT operationSuccessful(e, res);
 
         const auto result = res.toHtml();
-        addMessage(QStringLiteral("<a title='%1' href='kalgebra:/query?id=copy&func=%2'><span class='exp'>%3</span></a><br />= <a title='kalgebra:%1' "
-                                  "href='kalgebra:/query?id=copy&func=%4'><span class='result'>%5</span></a>")
+        addMessage(QStringLiteral("<a title='%1' href='kalgebra:/query?id=copy&func=%2'><span "
+                                  "class='exp'>%3</span></a><br />= <a title='kalgebra:%1' "
+                                  "href='kalgebra:/query?id=copy&func=%4'><span "
+                                  "class='result'>%5</span></a>")
                        .arg(i18n("Paste to Input"), e.toString(), e.toHtml(), res.toString(), result),
                    e,
                    res);
@@ -171,7 +141,7 @@ bool ConsoleModel::saveLog(const QUrl &savePath) const
 
     if (correct) {
         QTextStream out(&file);
-        out << "<html>\n<head>" << *s_css << "</head>" << QLatin1Char('\n');
+        out << "<html>\n<head>" << css() << "</head>" << QLatin1Char('\n');
         out << "<body>" << QLatin1Char('\n');
         for (const QByteArray &entry : std::as_const(m_htmlLog)) {
             out << "<p>" << entry << "</p>" << QLatin1Char('\n');
@@ -190,7 +160,38 @@ void ConsoleModel::clear()
 
 QByteArray ConsoleModel::css() const
 {
-    return *s_css;
+    const QPalette palette = qGuiApp->palette();
+    const QColor base = palette.color(QPalette::Base);
+    const QColor text = palette.color(QPalette::Text);
+    const QColor link = Analitza::readableColor(palette.color(QPalette::Link), base, text);
+    const QColor variable = Analitza::readableColor(palette.color(QPalette::LinkVisited), base, text);
+    // Tint the base lightly so the same token colors remain readable in every
+    // row.
+    auto tint = [&](const QColor &color) {
+        return QColor::fromRgbF(base.redF() * 0.94 + color.redF() * 0.06,
+                                base.greenF() * 0.94 + color.greenF() * 0.06,
+                                base.blueF() * 0.94 + color.blueF() * 0.06)
+            .name();
+    };
+    return QStringLiteral(
+               "<style type=\"text/css\">"
+               "html { background-color:%1; color:%2; }"
+               ".error { border:1px solid %3; background-color:%4; padding:7px; }"
+               ".last { border:1px solid %5; background-color:%6; padding:7px; }"
+               ".normal:hover { background-color:%6; }"
+               ".before { text-align:right; } .op, .sep { font-weight:bold; }"
+               ".cont, .var, .string { color:%7; }"
+               ".num, .sep, .keyword, .func, a { color:%5; }"
+               ".exp { color:%2; } .result { padding-left:10%; }"
+               ".options { font-size:small; text-align:right; }"
+               "li { padding-left:12px; padding-bottom:4px; "
+               "list-style-position:inside; }"
+               "a:link, a:visited { text-decoration:none; }"
+               "a:hover, a:active { text-decoration:underline; }"
+               "p { font-size:%8px; } </style>")
+        .arg(base.name(), text.name(), Analitza::readableColor(Qt::red, base, text).name(), tint(Qt::red), link.name(), tint(link), variable.name())
+        .arg(QFontMetrics(QGuiApplication::font()).height())
+        .toUtf8();
 }
 
 QString ConsoleModel::readContent(const QUrl &url)

@@ -38,6 +38,7 @@ class ExpressionEdit;
 class ConsoleHtml;
 class FunctionEdit;
 class KRecentFilesAction;
+class SessionPlotsModel;
 
 namespace Analitza
 {
@@ -55,6 +56,7 @@ public:
     void add3D(const Analitza::Expression &exp);
 
 private:
+    bool m_updatingInformation = false;
     QLabel *m_status;
     QTabWidget *m_tabs;
 
@@ -69,19 +71,19 @@ private:
 
     // graf 2d
     QMenu *b_menu;
-    Analitza::PlotsModel *b_funcsModel;
+    SessionPlotsModel *b_funcsModel = nullptr;
     QTreeView *b_funcs;
     QTabWidget *b_tools;
     Analitza::PlotsView2D *m_graph2d;
     QDockWidget *b_dock_funcs;
-    FunctionEdit *b_funced;
-    Analitza::VariablesModel *b_varsModel;
+    FunctionEdit *b_funced = nullptr;
+    Analitza::VariablesModel *b_varsModel = nullptr;
 
     // graph 3d
     QMenu *t_menu;
-    Analitza::ExpressionEdit *t_exp;
+    Analitza::ExpressionEdit *t_exp = nullptr;
     Analitza::PlotsView3DES *m_graph3d;
-    Analitza::PlotsModel *t_model3d;
+    SessionPlotsModel *t_model3d = nullptr;
 
     // Dictionary
     QDockWidget *d_dock;

@@ -21,6 +21,7 @@
 #include "consolehtml.h"
 #include "dictionary.h"
 #include "functionedit.h"
+#include "sessionplotsmodel.h"
 #include "varedit.h"
 #include "variablesdelegate.h"
 #include "viewportwidget.h"
@@ -54,6 +55,7 @@
 #include <QPointer>
 #include <QProcess>
 #include <QRandomGenerator>
+#include <QScopedValueRollback>
 #include <QStatusBar>
 #include <QTableView>
 #include <QToolButton>
@@ -175,6 +177,7 @@ KAlgebra::KAlgebra(QWidget *parent)
     c_variables->setSelectionMode(QAbstractItemView::SingleSelection);
 
     c_exp = new Analitza::ExpressionEdit(console);
+    c_exp->setObjectName(QStringLiteral("calculatorInput"));
     c_exp->setAnalitza(c_results->analitza());
     c_exp->setExamples(QStringList() << QStringLiteral("square:=x->x**2") << QStringLiteral("fib:=n->piecewise { eq(n,0)?0, eq(n,1)?1, ?fib(n-1)+fib(n-2) }"));
     c_dock_vars->setWidget(c_variables);
@@ -187,7 +190,6 @@ KAlgebra::KAlgebra(QWidget *parent)
     connect(c_exp, &Analitza::ExpressionEdit::returnPressed, this, &KAlgebra::operate);
     connect(c_results, &ConsoleHtml::status, this, &KAlgebra::changeStatusBar);
     connect(c_results, &ConsoleHtml::changed, this, &KAlgebra::updateInformation);
-    connect(c_results, SIGNAL(changed()), c_exp, SLOT(updateCompleter()));
     connect(c_results, SIGNAL(paste(QString)), c_exp, SLOT(insertText(QString)));
     connect(c_variables, &QAbstractItemView::clicked, this, &KAlgebra::edit_var);
     ////////menu
@@ -226,7 +228,8 @@ KAlgebra::KAlgebra(QWidget *parent)
     //////EOConsola
 
     //////2D Graph
-    b_funcsModel = new Analitza::PlotsModel(this);
+    b_funcsModel = new SessionPlotsModel(c_results->analitza()->variables(), this);
+    b_funcsModel->setObjectName(QStringLiteral("graph2dFunctions"));
 
     m_graph2d = new Analitza::PlotsView2D(m_tabs);
     m_graph2d->setTicksShown(Qt::Orientation(0));
@@ -323,9 +326,14 @@ KAlgebra::KAlgebra(QWidget *parent)
     QWidget *tridim = new QWidget(m_tabs);
     QVBoxLayout *t_layo = new QVBoxLayout(tridim);
     t_exp = new Analitza::ExpressionEdit(tridim);
+    t_exp->setObjectName(QStringLiteral("graph3dInput"));
     t_exp->setExamples(Analitza::PlotsFactory::self()->examples(Analitza::Dim3D));
     t_exp->setAns(QStringLiteral("x"));
-    t_model3d = new Analitza::PlotsModel(this);
+    t_model3d = new SessionPlotsModel(c_results->analitza()->variables(), this);
+    t_model3d->setObjectName(QStringLiteral("graph3dFunctions"));
+    t_exp->setAnalitza(c_results->analitza());
+    connect(b_funcsModel, &SessionPlotsModel::functionsChanged, this, &KAlgebra::updateInformation);
+    connect(t_model3d, &SessionPlotsModel::functionsChanged, this, &KAlgebra::updateInformation);
     m_graph3d = new Analitza::PlotsView3DES(tridim);
     m_graph3d->setModel(t_model3d);
     m_graph3d->setUseSimpleRotation(true);
@@ -392,12 +400,6 @@ KAlgebra::KAlgebra(QWidget *parent)
     KHelpMenu *help = new KHelpMenu(this);
     menuBar()->addMenu(help->menu());
 
-#pragma message("TODO: Port to PlotsModel")
-    //     connect(b_funcsModel, SIGNAL(functionModified(QString,Analitza::Expression)),
-    //             c_results, SLOT(modifyVariable(QString,Analitza::Expression)));
-    //     connect(b_funcsModel, SIGNAL(functionRemoved(QString)),
-    //             c_results, SLOT(removeVariable(QString)));
-
     connect(m_tabs, &QTabWidget::currentChanged, this, &KAlgebra::tabChanged);
     tabChanged(0);
 }
@@ -435,7 +437,11 @@ void KAlgebra::add2D(const Analitza::Expression &exp)
     qDebug() << "adding" << exp.toString();
 
     Analitza::PlotBuilder req = Analitza::PlotsFactory::self()->requestPlot(exp, Analitza::Dim2D, c_results->analitza()->variables());
-    Analitza::PlotItem *curve = req.create(randomFunctionColor(), b_funcsModel->freeId());
+    if (!req.canDraw()) {
+        changeStatusBar(req.errors().join(QStringLiteral(", ")));
+        return;
+    }
+    Analitza::PlotItem *curve = req.create(randomFunctionColor(), b_funcsModel->nextFunctionName());
     b_funcsModel->addPlot(curve);
 
     m_tabs->setCurrentIndex(1);
@@ -443,6 +449,8 @@ void KAlgebra::add2D(const Analitza::Expression &exp)
 
 void KAlgebra::new_func()
 {
+    if (!b_funced->editing())
+        b_funced->setName(b_funcsModel->nextFunctionName());
     Analitza::FunctionGraph *f = b_funced->createFunction();
 
     if (b_funced->editing()) {
@@ -486,7 +494,7 @@ void KAlgebra::functools(int i)
     if (i == 0)
         b_tools->setTabText(1, i18n("&Add"));
     else {
-        b_funced->setName(b_funcsModel->freeId());
+        b_funced->setName(b_funcsModel->nextFunctionName());
         b_funced->setColor(randomFunctionColor());
         b_funced->setEditing(false);
         b_funced->setFocus();
@@ -590,7 +598,7 @@ void KAlgebra::new_func3d()
     Analitza::PlotBuilder plot = Analitza::PlotsFactory::self()->requestPlot(exp, Analitza::Dim3D, c_results->analitza()->variables());
     if (plot.canDraw()) {
         t_model3d->clear();
-        t_model3d->addPlot(plot.create(Qt::yellow, QStringLiteral("func3d")));
+        t_model3d->addPlot(plot.create(Qt::yellow, t_model3d->nextFunctionName()));
     } else
         changeStatusBar(i18n("Errors: %1", plot.errors().join(i18n(", "))));
 }
@@ -699,7 +707,21 @@ void KAlgebra::select(const QModelIndex &idx)
 
 void KAlgebra::updateInformation()
 {
+    if (m_updatingInformation)
+        return;
+    QScopedValueRollback<bool> guard(m_updatingInformation, true);
     c_varsModel->updateInformation();
+    if (b_varsModel)
+        b_varsModel->updateInformation();
+    QMetaObject::invokeMethod(c_exp, "updateCompleter");
+    if (t_exp)
+        QMetaObject::invokeMethod(t_exp, "updateCompleter");
+    if (b_funced)
+        b_funced->updateContext();
+    if (b_funcsModel)
+        b_funcsModel->refresh();
+    if (t_model3d)
+        t_model3d->refresh();
     c_variables->header()->resizeSections(QHeaderView::ResizeToContents);
 }
 
@@ -715,6 +737,7 @@ void KAlgebra::consoleEvaluate()
 
 void KAlgebra::valueChanged()
 {
+    updateInformation();
     // FIXME: Should only repaint the affected ones.
     if (b_funcsModel->rowCount() > 0)
         m_graph2d->updateFunctions(QModelIndex(), 0, b_funcsModel->rowCount() - 1);
@@ -741,7 +764,7 @@ void KAlgebra::add3D(const Analitza::Expression &exp)
     t_model3d->clear();
     Analitza::PlotBuilder plot = Analitza::PlotsFactory::self()->requestPlot(exp, Analitza::Dim3D, c_results->analitza()->variables());
     Q_ASSERT(plot.canDraw());
-    t_model3d->addPlot(plot.create(Qt::yellow, QStringLiteral("func3d_console")));
+    t_model3d->addPlot(plot.create(Qt::yellow, t_model3d->nextFunctionName()));
     m_tabs->setCurrentIndex(2);
 }
 

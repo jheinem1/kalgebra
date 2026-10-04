@@ -57,6 +57,7 @@ FunctionEdit::FunctionEdit(QWidget *parent)
     m_name = new QLineEdit(this);
 
     m_func = new ExpressionEdit(this);
+    m_func->setObjectName(QStringLiteral("functionInput"));
     m_func->setExamples(PlotsFactory::self()->examples(Dim2D));
     m_func->setAns(QStringLiteral("x"));
     connect(m_func, &QPlainTextEdit::textChanged, this, &FunctionEdit::edit);
@@ -139,6 +140,22 @@ FunctionEdit::FunctionEdit(QWidget *parent)
 
 FunctionEdit::~FunctionEdit()
 {
+}
+
+void FunctionEdit::setVariables(const QSharedPointer<Analitza::Variables> &v)
+{
+    m_vars = v;
+    m_analyzer.setVariables(v);
+    m_func->setAnalitza(&m_analyzer);
+    m_uplimit->setAnalitza(&m_analyzer);
+    m_downlimit->setAnalitza(&m_analyzer);
+}
+
+void FunctionEdit::updateContext()
+{
+    for (auto editor : {m_func, m_uplimit, m_downlimit})
+        QMetaObject::invokeMethod(editor, "updateCompleter");
+    edit();
 }
 
 void FunctionEdit::clear()

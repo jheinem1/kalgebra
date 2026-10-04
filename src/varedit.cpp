@@ -17,6 +17,7 @@
  *************************************************************************************/
 
 #include "varedit.h"
+#include <KColorScheme>
 #include <analitza/analyzer.h>
 #include <analitza/expression.h>
 #include <analitza/variables.h>
@@ -97,12 +98,16 @@ Analitza::Expression VarEdit::val()
 
     m_correct = a.isCorrect();
     if (m_correct) {
-        m_valid->setText(i18n("<b style='color:#090'>%1 := %2</b>", m_var, val.toString()));
+        m_valid->setText(i18n("<b>%1 := %2</b>", m_var.toHtmlEscaped(), val.toString().toHtmlEscaped()));
         m_valid->setToolTip(QString());
     } else {
-        m_valid->setText(i18n("<b style='color:red'>WRONG</b>"));
+        m_valid->setText(i18n("<b>WRONG</b>"));
         m_valid->setToolTip(a.errors().join(QStringLiteral("\n")));
     }
+    QPalette feedbackPalette = m_valid->palette();
+    const KColorScheme scheme(QPalette::Active);
+    feedbackPalette.setColor(QPalette::WindowText, scheme.foreground(m_correct ? KColorScheme::PositiveText : KColorScheme::NegativeText).color());
+    m_valid->setPalette(feedbackPalette);
     m_buttonBox->button(QDialogButtonBox::Ok)->setEnabled(m_correct);
     m_exp->setCorrect(m_correct);
 
