@@ -2,6 +2,8 @@ add_executable(kalgebra)
 target_sources(kalgebra PRIVATE
     sessionplotsmodel.cpp
     sessionplotsmodel.h
+    exactrational.cpp
+    exactrational.h
     askname.h
     consolehtml.cpp
     consolehtml.h
@@ -36,4 +38,3 @@ install(TARGETS kalgebra ${KDE_INSTALL_TARGETS_DEFAULT_ARGS})
 install(PROGRAMS org.kde.kalgebra.desktop DESTINATION ${KDE_INSTALL_APPDIR} )
 install(FILES kalgebra.xml DESTINATION ${KDE_INSTALL_DATADIR}/katepart5/syntax )
 install(FILES org.kde.kalgebra.appdata.xml DESTINATION ${KDE_INSTALL_METAINFODIR})
-

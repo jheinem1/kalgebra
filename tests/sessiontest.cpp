@@ -3,6 +3,7 @@
 #include "sessionplotsmodel.h"
 #include <QGuiApplication>
 #include <QPalette>
+#include <QSignalSpy>
 #include <QTest>
 #include <analitza/analyzer.h>
 #include <analitza/value.h>
@@ -96,6 +97,57 @@ private Q_SLOTS:
         add(plots, QStringLiteral("x=2*y"), Analitza::Dim2D, variables);
         QCOMPARE(variables->valueExpression(QStringLiteral("f0")).bvarList().size(), 2);
         QCOMPARE(calculate(variables, QStringLiteral("f0(2,1)")), 0.);
+        QCOMPARE(calculate(variables, QStringLiteral("f0(2)")), 1.);
+    }
+    void implicitSingleArgument_data()
+    {
+        QTest::addColumn<QString>("equation");
+        QTest::addColumn<double>("x");
+        QTest::addColumn<double>("y");
+        QTest::newRow("screenshot") << QStringLiteral("x=13*y") << 12. << 12./13.;
+        QTest::newRow("parabola") << QStringLiteral("y=x^2") << 3. << 9.;
+        QTest::newRow("both sides") << QStringLiteral("2*y+x=5*y-6") << 3. << 3.;
+        QTest::newRow("variable coefficient") << QStringLiteral("x*y=1") << 2. << 0.5;
+        QTest::newRow("division") << QStringLiteral("y/2=x+1") << 2. << 6.;
+        QTest::newRow("negative") << QStringLiteral("-y=x") << 2. << -2.;
+        QTest::newRow("trigonometric") << QStringLiteral("y=sin(x)") << 0. << 0.;
+    }
+    void implicitSingleArgument()
+    {
+        QFETCH(QString, equation);
+        QFETCH(double, x);
+        QFETCH(double, y);
+        ConsoleModel calculator;
+        auto variables = calculator.variables();
+        SessionPlotsModel plots(variables);
+        add(plots, equation, Analitza::Dim2D, variables);
+        const QString call = QStringLiteral("f0(%1)").arg(x);
+        QVERIFY(calculator.addOperation(call));
+        QCOMPARE(variables->valueExpression(QStringLiteral("ans")).toReal().value(), y);
+        QCOMPARE(calculate(variables, QStringLiteral("f0(%1,%2)").arg(x).arg(y, 0, 'g', 17)), 0.);
+        QVERIFY(calculator.addOperation(QStringLiteral("g:=x->f0(x)+1")));
+        QCOMPARE(calculate(variables, QStringLiteral("g(%1)").arg(x)), y+1);
+    }
+    void implicitEditsAndAmbiguousCurves()
+    {
+        ConsoleModel calculator;
+        auto variables = calculator.variables();
+        SessionPlotsModel plots(variables);
+        QVERIFY(calculator.addOperation(QStringLiteral("a:=13")));
+        add(plots, QStringLiteral("x=a*y"), Analitza::Dim2D, variables);
+        QCOMPARE(calculate(variables, QStringLiteral("f0(13)")), 1.);
+        QVERIFY(calculator.addOperation(QStringLiteral("a:=2")));
+        plots.refresh();
+        QCOMPARE(calculate(variables, QStringLiteral("f0(12)")), 6.);
+        QVERIFY(plots.setData(plots.index(0, 1), QStringLiteral("x=3*y")));
+        QCOMPARE(calculate(variables, QStringLiteral("f0(12)")), 4.);
+        QVERIFY(plots.setData(plots.index(0, 0), QStringLiteral("line")));
+        QCOMPARE(calculate(variables, QStringLiteral("line(12)")), 4.);
+        plots.removeRow(0);
+        QCOMPARE(calculate(variables, QStringLiteral("line(12)")), 4.);
+        add(plots, QStringLiteral("x^2+y^2=1"), Analitza::Dim2D, variables);
+        QVERIFY(!calculator.addOperation(QStringLiteral("f1(0)")));
+        QVERIFY(calculator.addOperation(QStringLiteral("f1(0,1)")));
     }
     void cssFollowsPalette()
     {
@@ -112,6 +164,49 @@ private Q_SLOTS:
         QVERIFY(!darkCss.contains("#000000"));
         qGuiApp->setPalette(original);
         QVERIFY(model.css() != darkCss);
+    }
+    void rationalResultsAndFormatSwitch()
+    {
+        ConsoleModel calculator;
+        QSignalSpy messages(&calculator, &ConsoleModel::message);
+        auto shown = [&] { return qvariant_cast<Analitza::Expression>(messages.last().at(2)).toString(); };
+        QVERIFY(calculator.addOperation(QStringLiteral("1/3+1/6")));
+        QCOMPARE(shown(), QStringLiteral("1/2"));
+        calculator.setResultFormat(ConsoleModel::Decimals);
+        QVERIFY(calculator.htmlLog().last().contains("func=0.5"));
+        calculator.setResultFormat(ConsoleModel::Fractions);
+        QVERIFY(calculator.htmlLog().last().contains("func=1/2"));
+        QVERIFY(calculator.addOperation(QStringLiteral("a:=1/3")));
+        QCOMPARE(shown(), QStringLiteral("1/3"));
+        QVERIFY(calculator.addOperation(QStringLiteral("ans+1/6")));
+        QCOMPARE(shown(), QStringLiteral("1/2"));
+        QVERIFY(calculator.addOperation(QStringLiteral("a+1/6")));
+        QCOMPARE(shown(), QStringLiteral("1/2"));
+        QVERIFY(calculator.addOperation(QStringLiteral("a:=1/2")));
+        QCOMPARE(shown(), QStringLiteral("1/2"));
+        QVERIFY(calculator.addOperation(QStringLiteral("a+1/6")));
+        QCOMPARE(shown(), QStringLiteral("2/3"));
+        QVERIFY(calculator.addOperation(QStringLiteral("0.1+0.2")));
+        QCOMPARE(shown(), QStringLiteral("3/10"));
+        QVERIFY(calculator.addOperation(QStringLiteral("(2/3)^(-2)")));
+        QCOMPARE(shown(), QStringLiteral("9/4"));
+        QVERIFY(calculator.addOperation(QStringLiteral("pi")));
+        QCOMPARE(shown(), calculator.variables()->valueExpression(QStringLiteral("pi")).toString());
+        QVERIFY(calculator.addOperation(QStringLiteral("sin(1)")));
+        QVERIFY(!shown().contains(QLatin1Char('/')));
+        calculator.setMode(ConsoleModel::Calculation);
+        QVERIFY(calculator.addOperation(QStringLiteral("1/7")));
+        QCOMPARE(shown(), QStringLiteral("1/7"));
+        SessionPlotsModel plots(calculator.variables());
+        add(plots, QStringLiteral("x=13*y"), Analitza::Dim2D, calculator.variables());
+        QVERIFY(calculator.addOperation(QStringLiteral("f0(12)")));
+        QCOMPARE(shown(), QStringLiteral("12/13"));
+        calculator.setResultFormat(ConsoleModel::Decimals);
+        QVERIFY(calculator.addOperation(QStringLiteral("f0(12)")));
+        QVERIFY(!shown().contains(QLatin1Char('/')));
+        calculator.clear();
+        calculator.setResultFormat(ConsoleModel::Fractions);
+        QVERIFY(calculator.htmlLog().isEmpty());
     }
 };
 QTEST_MAIN(SessionTest)

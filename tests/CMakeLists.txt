@@ -1,6 +1,7 @@
 ecm_add_test(sessiontest.cpp
     ../src/sessionplotsmodel.cpp ../src/sessionplotsmodel.h
     ../src/consolemodel.cpp ../src/consolemodel.h
+    ../src/exactrational.cpp ../src/exactrational.h
     TEST_NAME sessiontest
     LINK_LIBRARIES Qt::Test KF6::I18n KF6::Analitza KF6::AnalitzaPlot)
 target_include_directories(sessiontest PRIVATE ../src)

@@ -2,6 +2,7 @@ qt_add_resources(KALGEBRAMOBILE_SRCS resources.qrc)
 
 add_executable(kalgebramobile
     ../src/consolemodel.cpp
+    ../src/exactrational.cpp
     clipboard.cpp
     kalgebramobile.cpp
     main.cpp

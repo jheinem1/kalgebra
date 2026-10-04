@@ -5,6 +5,7 @@
 #include "sessionplotsmodel.h"
 #include <KLocalizedString>
 #include <QApplication>
+#include <QAction>
 #include <QDir>
 #include <QSignalSpy>
 #include <QTest>
@@ -128,6 +129,41 @@ private Q_SLOTS:
                      .arg(original.color(QPalette::Text).red())
                      .arg(original.color(QPalette::Text).green())
                      .arg(original.color(QPalette::Text).blue()));
+    }
+    void resultFormatMenu()
+    {
+        KAlgebra window;
+        auto fractions = window.findChild<QAction *>(QStringLiteral("fractionResults"));
+        auto decimals = window.findChild<QAction *>(QStringLiteral("decimalResults"));
+        auto console = window.findChild<ConsoleHtml *>();
+        auto model = console->findChild<ConsoleModel *>();
+        QVERIFY(fractions && decimals && model);
+        fractions->trigger();
+        QVERIFY(fractions->isChecked());
+        QVERIFY(!decimals->isChecked());
+        QVERIFY(console->addOperation(Analitza::Expression(QStringLiteral("12/13")), QStringLiteral("12/13")));
+        QVERIFY(model->htmlLog().last().contains("func=12/13"));
+        decimals->trigger();
+        QVERIFY(decimals->isChecked());
+        QVERIFY(!fractions->isChecked());
+        QCOMPARE(console->resultFormat(), ConsoleModel::Decimals);
+        QVERIFY(!model->htmlLog().last().contains("func=12/13'><span class='result'>"));
+        fractions->trigger();
+        QVERIFY(model->htmlLog().last().contains("func=12/13"));
+        auto editor = window.findChild<FunctionEdit *>();
+        editor->setFunction(QStringLiteral("x=13*y"));
+        QVERIFY(QMetaObject::invokeMethod(&window, "new_func"));
+        QVERIFY(console->addOperation(Analitza::Expression(QStringLiteral("f0(12)")), QStringLiteral("f0(12)")));
+        QVERIFY(model->htmlLog().last().contains("func=12/13"));
+        const QString output = qEnvironmentVariable("KALGEBRA_TEST_SCREENSHOT_DIR");
+        if (!output.isEmpty()) {
+            window.resize(1100, 720);
+            window.show();
+            QSignalSpy loaded(console, &QWebEngineView::loadFinished);
+            QTRY_VERIFY_WITH_TIMEOUT(!loaded.isEmpty(), 15000);
+            QTest::qWait(300);
+            QVERIFY(window.grab().save(output + QStringLiteral("/kalgebra-fraction-result.png")));
+        }
     }
 };
 QTEST_MAIN(AppTest)

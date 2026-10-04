@@ -221,6 +221,23 @@ KAlgebra::KAlgebra(QWidget *parent)
     eval->setChecked(true);
     execGroup->addAction(calc);
     execGroup->addAction(eval);
+    c_menu->addSeparator()->setText(i18n("Result Format"));
+    auto formatGroup = new QActionGroup(c_menu);
+    auto fractions = c_menu->addAction(i18nc("@item:inmenu", "Fractions"));
+    auto decimals = c_menu->addAction(i18nc("@item:inmenu", "Decimals"));
+    fractions->setObjectName(QStringLiteral("fractionResults"));
+    decimals->setObjectName(QStringLiteral("decimalResults"));
+    fractions->setCheckable(true);
+    decimals->setCheckable(true);
+    formatGroup->addAction(fractions);
+    formatGroup->addAction(decimals);
+    KConfig formatConfig(QStringLiteral("kalgebrarc"));
+    const bool useFractions = KConfigGroup(&formatConfig, QStringLiteral("Default")).readEntry("fractionResults", true);
+    fractions->setChecked(useFractions);
+    decimals->setChecked(!useFractions);
+    c_results->setResultFormat(useFractions ? ConsoleModel::Fractions : ConsoleModel::Decimals);
+    connect(fractions, &QAction::triggered, this, [this] { c_results->setResultFormat(ConsoleModel::Fractions); });
+    connect(decimals, &QAction::triggered, this, [this] { c_results->setResultFormat(ConsoleModel::Decimals); });
     c_menu->addSeparator();
     c_menu->addAction(KStandardAction::clear(c_results, SLOT(clear()), this));
     initializeRecentScripts();
@@ -414,6 +431,7 @@ KAlgebra::~KAlgebra()
         urls += url.toDisplayString();
 
     config.writeEntry("recent", urls);
+    config.writeEntry("fractionResults", c_results->resultFormat() == ConsoleModel::Fractions);
 }
 
 void KAlgebra::initializeRecentScripts()

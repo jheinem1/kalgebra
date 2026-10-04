@@ -64,6 +64,8 @@ public:
 
     /** Retrieves the console mode. */
     ConsoleModel::ConsoleMode mode() const;
+    ConsoleModel::ResultFormat resultFormat() const { return m_model->resultFormat(); }
+    void setResultFormat(ConsoleModel::ResultFormat format) { m_model->setResultFormat(format); }
 
     void addOptionsObserver(InlineOptions *opt)
     {

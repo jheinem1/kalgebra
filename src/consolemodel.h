@@ -20,6 +20,7 @@
 #define CONSOLEMODEL_H
 
 #include <QObject>
+#include "exactrational.h"
 #include <analitza/analyzer.h>
 #include <analitza/expression.h>
 #include <analitza/variables.h>
@@ -38,6 +39,10 @@ public:
         Calculation /**< Calculates everything, if it finds a not defined variable shows an error. */
     };
     Q_ENUM(ConsoleMode)
+    enum ResultFormat { Fractions, Decimals };
+    Q_ENUM(ResultFormat)
+    ResultFormat resultFormat() const { return m_resultFormat; }
+    void setResultFormat(ResultFormat format);
 
     Q_SCRIPTABLE bool addOperation(const QString &input);
     bool addOperation(const Analitza::Expression &e, const QString &input);
@@ -80,12 +85,20 @@ Q_SIGNALS:
     void variablesChanged();
 
 private:
+    QString formatResult(const Analitza::Expression &expression, const Analitza::Expression &result) const;
     void addMessage(const QString &msg, const Analitza::Expression &operation, const Analitza::Expression &result);
 
     QList<QByteArray> m_htmlLog;
     Analitza::Analyzer a;
     ConsoleMode m_mode = Evaluation;
     QList<Analitza::Expression> m_script;
+    struct ResultRow {
+        qsizetype index;
+        Analitza::Expression expression, decimal, fraction;
+    };
+    QList<ResultRow> m_resultRows;
+    ExactValues m_exactValues;
+    ResultFormat m_resultFormat = Fractions;
 };
 
 #endif

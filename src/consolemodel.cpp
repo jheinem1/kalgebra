@@ -26,6 +26,8 @@
 #include <QPalette>
 #include <QUrl>
 #include <QUrlQuery>
+#include <analitza/value.h>
+#include <cmath>
 
 using namespace Qt::Literals::StringLiterals;
 
@@ -42,9 +44,11 @@ bool ConsoleModel::addOperation(const QString &input)
 bool ConsoleModel::addOperation(const Analitza::Expression &e, const QString &input)
 {
     Analitza::Expression res;
+    Analitza::Expression fraction;
 
     a.setExpression(e);
     if (a.isCorrect()) {
+        fraction = exactRational(e, a.variables(), m_exactValues);
         if (m_mode == ConsoleModel::Evaluation) {
             res = a.evaluate();
         } else {
@@ -54,22 +58,52 @@ bool ConsoleModel::addOperation(const Analitza::Expression &e, const QString &in
 
     if (a.isCorrect()) {
         a.insertVariable(u"ans"_s, res);
+        if (fraction.tree() && fraction.isCorrect() && (!res.isReal() || res.toReal().isBoolean()))
+            fraction.clear();
+        if (fraction.tree() && fraction.isCorrect()) {
+            Analitza::Analyzer check;
+            check.setExpression(fraction);
+            const double exactValue = check.calculate().toReal().value();
+            if (!check.isCorrect() || !qFuzzyCompare(1. + exactValue, 1. + res.toReal().value()))
+                fraction.clear();
+        }
+        if (e.isDeclaration()) {
+            m_exactValues.remove(e.name());
+            if (fraction.tree() && fraction.isCorrect())
+                m_exactValues.insert(e.name(), {res.toReal().value(), fraction});
+        }
+        m_exactValues.remove(u"ans"_s);
+        if (fraction.tree() && fraction.isCorrect())
+            m_exactValues.insert(u"ans"_s, {res.toReal().value(), fraction});
         m_script += e; // Script won't have the errors
-        Q_EMIT operationSuccessful(e, res);
-
-        const auto result = res.toHtml();
-        addMessage(QStringLiteral("<a title='%1' href='kalgebra:/query?id=copy&func=%2'><span "
-                                  "class='exp'>%3</span></a><br />= <a title='kalgebra:%1' "
-                                  "href='kalgebra:/query?id=copy&func=%4'><span "
-                                  "class='result'>%5</span></a>")
-                       .arg(i18n("Paste to Input"), e.toString(), e.toHtml(), res.toString(), result),
-                   e,
-                   res);
+        const auto shown = m_resultFormat == Fractions && fraction.tree() && fraction.isCorrect() ? fraction : res;
+        m_resultRows.append({m_htmlLog.size(), e, res, fraction});
+        Q_EMIT operationSuccessful(e, shown);
+        addMessage(formatResult(e, shown), e, shown);
     } else {
         addMessage(i18n("<ul class='error'>Error: <b>%1</b><li>%2</li></ul>", input.toHtmlEscaped(), a.errors().join(u"</li>\n<li>"_s)), {}, {});
     }
 
     return a.isCorrect();
+}
+
+QString ConsoleModel::formatResult(const Analitza::Expression &expression, const Analitza::Expression &result) const
+{
+    return QStringLiteral("<a title='%1' href='kalgebra:/query?id=copy&func=%2'><span class='exp'>%3</span></a>"
+                          "<br />= <a title='kalgebra:%1' href='kalgebra:/query?id=copy&func=%4'><span class='result'>%5</span></a>")
+        .arg(i18n("Paste to Input"), expression.toString(), expression.toHtml(), result.toString(), result.toHtml());
+}
+
+void ConsoleModel::setResultFormat(ResultFormat format)
+{
+    if (m_resultFormat == format)
+        return;
+    m_resultFormat = format;
+    for (const auto &row : std::as_const(m_resultRows)) {
+        const auto result = format == Fractions && row.fraction.tree() && row.fraction.isCorrect() ? row.fraction : row.decimal;
+        m_htmlLog[row.index] = formatResult(row.expression, result).toUtf8();
+    }
+    Q_EMIT updateView();
 }
 
 bool ConsoleModel::loadScript(const QUrl &path)
@@ -156,6 +190,7 @@ void ConsoleModel::clear()
 {
     m_script.clear();
     m_htmlLog.clear();
+    m_resultRows.clear();
 }
 
 QByteArray ConsoleModel::css() const

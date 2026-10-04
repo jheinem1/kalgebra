@@ -2,9 +2,87 @@
 #include "sessionplotsmodel.h"
 
 #include <QScopedValueRollback>
+#include <analitza/analitzautils.h>
+#include <analitza/analyzer.h>
+#include <analitza/apply.h>
 #include <analitza/variables.h>
 #include <analitzaplot/functiongraph.h>
 #include <analitzaplot/plotsfactory.h>
+
+namespace
+{
+// Split a residual into coefficient*y + constant without sampling. This also
+// works when the coefficient and constant depend on x or shared variables.
+struct AffineY {
+    QString coefficient = QStringLiteral("0");
+    QString constant = QStringLiteral("0");
+    bool valid = true;
+};
+
+QString combine(const QString &left, const QString &op, const QString &right)
+{
+    return QStringLiteral("(%1)%2(%3)").arg(left, op, right);
+}
+
+AffineY splitY(const Analitza::Object *object)
+{
+    if (!AnalitzaUtils::dependencies(object, {}).contains(QStringLiteral("y")))
+        return {QStringLiteral("0"), object->toString(), true};
+    if (object->type() == Analitza::Object::variable)
+        return {QStringLiteral("1"), QStringLiteral("0"), true};
+    if (!object->isApply())
+        return {{}, {}, false};
+    const auto apply = static_cast<const Analitza::Apply *>(object);
+    const auto op = apply->firstOperator().operatorType();
+    if (op != Analitza::Operator::plus && op != Analitza::Operator::minus && op != Analitza::Operator::times && op != Analitza::Operator::divide)
+        return {{}, {}, false};
+    AffineY result = splitY(apply->at(0));
+    if (op == Analitza::Operator::minus && apply->isUnary()) {
+        result.coefficient = combine(QStringLiteral("0"), QStringLiteral("-"), result.coefficient);
+        result.constant = combine(QStringLiteral("0"), QStringLiteral("-"), result.constant);
+    }
+    for (int i = 1; result.valid && i < apply->countValues(); ++i) {
+        const auto next = splitY(apply->at(i));
+        if (!next.valid)
+            return next;
+        if (op == Analitza::Operator::times) {
+            if (result.coefficient != QLatin1String("0") && next.coefficient != QLatin1String("0"))
+                return {{}, {}, false};
+            result.coefficient = result.coefficient == QLatin1String("0") ? combine(result.constant, QStringLiteral("*"), next.coefficient)
+                                                                         : combine(result.coefficient, QStringLiteral("*"), next.constant);
+            result.constant = combine(result.constant, QStringLiteral("*"), next.constant);
+        } else if (op == Analitza::Operator::divide) {
+            if (next.coefficient != QLatin1String("0"))
+                return {{}, {}, false};
+            result.coefficient = combine(result.coefficient, QStringLiteral("/"), next.constant);
+            result.constant = combine(result.constant, QStringLiteral("/"), next.constant);
+        } else {
+            const QString symbol = op == Analitza::Operator::plus ? QStringLiteral("+") : QStringLiteral("-");
+            result.coefficient = combine(result.coefficient, symbol, next.coefficient);
+            result.constant = combine(result.constant, symbol, next.constant);
+        }
+    }
+    return result;
+}
+
+Analitza::Expression ordinateFunction(const Analitza::Expression &residual)
+{
+    if (residual.bvarList() != QStringList{QStringLiteral("x"), QStringLiteral("y")})
+        return {};
+    const auto parts = splitY(residual.lambdaBody().tree());
+    if (!parts.valid)
+        return {};
+    Analitza::Analyzer symbolic;
+    symbolic.setExpression(Analitza::Expression(parts.coefficient));
+    symbolic.simplify();
+    if (!symbolic.isCorrect() || symbolic.expression().tree()->isZero())
+        return {};
+    const auto function = Analitza::Expression(QStringLiteral("x->-(%1)/(%2)").arg(parts.constant, parts.coefficient));
+    symbolic.setExpression(function);
+    symbolic.simplify();
+    return symbolic.isCorrect() ? symbolic.expression() : Analitza::Expression();
+}
+}
 
 SessionPlotsModel::SessionPlotsModel(const QSharedPointer<Analitza::Variables> &variables, QObject *parent)
     : Analitza::PlotsModel(parent)
@@ -62,9 +140,11 @@ void SessionPlotsModel::synchronize()
         return;
     QScopedValueRollback<bool> guard(m_synchronizing, true);
     QHash<QString, Analitza::Expression> current;
+    QHash<QString, Analitza::PlotItem *> items;
     for (int row = 0; row < rowCount(); ++row) {
         auto item = index(row, 0).data(PlotRole).value<Analitza::PlotItem *>();
         current.insert(item->name(), item->expression());
+        items.insert(item->name(), item);
     }
     bool changed = false;
     // Removing a plot only removes its view. Keep the shared definition available
@@ -74,6 +154,12 @@ void SessionPlotsModel::synchronize()
         // calculator.
         if (!m_published.contains(it.key()) || m_published.value(it.key()).toString() != it.value().toString()) {
             m_variables->modify(it.key(), it.value());
+            const auto item = items.value(it.key());
+            if (item->spaceDimension() == Analitza::Dim2D && Analitza::Expression(item->display()).isEquation()) {
+                const auto ordinate = ordinateFunction(it.value());
+                if (ordinate.isLambda() && ordinate.isCorrect())
+                    m_variables->setFunctionOverload(it.key(), ordinate);
+            }
             changed = true;
         }
     }

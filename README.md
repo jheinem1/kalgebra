@@ -10,8 +10,10 @@ This fork of [KDE KAlgebra](https://invent.kde.org/education/kalgebra) fixes sha
 - Removing a plot removes the view, retaining its definition in the calculator so other expressions can continue to use it.
 - The calculator log follows the active palette, including theme changes. Input syntax colors meet a 4.5:1 contrast ratio against the theme's base color; validation backgrounds are tinted from that base.
 - Enter, Return, and Tab accept the highlighted completion instead of the first match. Enter with no active completion still submits the expression, and Up/Down still navigate calculator history.
+- The empty calculator uses the active theme background from startup, before any equations are entered.
+- Calculator → Result Format offers Fractions and Decimals. Switching reformats existing results and is remembered on the next launch. Rational arithmetic, including `ans` and named functions, keeps reduced fractions; irrational results use decimals. Fractions which exceed the supported integer range fall back to decimals.
 
-For an explicit plot such as `x->x**2`, `f0(3)` returns `9`. Inferred arguments are sorted by name; explicitly written argument lists retain their order. An implicit equation such as `x=2*y` retains both arguments: its plotted residual is a function of `(x,y)`, so `f0(2,1)` returns `0`. This does not solve an implicit equation for one variable.
+For an explicit plot such as `x->x**2`, `f0(3)` returns `9`. Inferred arguments are sorted by name; explicitly written argument lists retain their order. Implicit 2D equations that are linear in `y` also support a one-argument call which solves for `y`: for `x=13*y`, `f0(12)` returns `12/13` in Fractions mode, or its decimal value in Decimals mode. This includes equations such as `y=x^2` and `x*y=1`. The original residual call remains available: `f0(13,1)` returns `0`. Nonlinear relations in `y`, such as a circle with two branches, require both arguments.
 
 ## Native build
 
